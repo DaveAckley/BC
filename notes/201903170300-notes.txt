@@ -1,0 +1,53 @@
+{5}  -*- text -*- 
+[0:
+
+Sun Mar 17 03:00:08 2019 OK just spent, of course, waaaay too much
+time deciding on the name of this 'BC' directory.  For quick context
+and for the record, here are some of the things I considered:
+
+List DLL SWorm Worm QWorm Chain Link Poly Polymer Mer Meros Item Seq
+QSeq D1
+
+[1:
+
+Sun Mar 17 03:06:59 2019 Although 'D1' is looking kind of appealing
+again, now that I write all those down.  '1D' can't be a type but 'D1'
+can..  'Dimension 1'.  I ended up landing on BC, for 'Base Chain' or
+'Basic Chain' mostly because it's relatively neutral between CS and
+biochemistry and it's got MFM history on its side.[2:
+
+Sun Mar 17 03:10:19 2019 The other thing I spent a lahhhhhht of time
+on was wishing I could have something like multiple inheritance in
+ulam, like an 'ulam 5' or something.  I've been frustrated about my
+inability to reuse ulam code--always having to be rewriting it
+instead, and talking about Bar being 'in the spirit' of some previous
+Foo.  And thinking about it again now -- because I'd really like this
+chain link stuff to be _somewhat_ general -- it keeps seeming like a
+main reason I have to rewrite is because each different project needs
+its own base class.  It seemed if you had some syntax where a class
+could delegate handling some type Foo to one of its own data members
+(of type Foo), you kind get a chunk of multiple inheritance by turning
+a 'hasa' into a 'pseudo-isa'. [3:
+
+Sun Mar 17 03:18:22 2019 Not sure.  We'll see, someday, perhaps.  For
+sure there would be lots of unobvious implementation issues.  
+
+Anyway so I spent time on that.  But for now we're just going to do BC
+in ulam 4 and that's that.  Want to just get into the design space and
+start springing the bear traps..
+
+:3]
+
+:2]
+
+:1]
+
+:0]
+[4:
+
+Sun Mar 17 03:24:14 2019 Making BC yet another private repo at github,
+I guess!  Free for up to three developers per repo is pretty tempting,
+I admit.  One, Two, Three, Publically.. Makes sense to me.  'Then
+Public Be'.
+
+:4]
