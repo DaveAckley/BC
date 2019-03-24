@@ -3,6 +3,7 @@ local constant Unsigned cLENGTH_BITS = 4u;
 local constant Unsigned cSPEED_BITS = 2u;
 local typedef Unsigned(cLENGTH_BITS) LengthType;
 local typedef Unsigned(cSPEED_BITS) SpeedType;
+local typedef Bool(1) TailVisibleType;
 
 == Methods
 u virtual Bool headCanBridge() ; 
@@ -24,6 +25,26 @@ getColor {
 == Data members
 u LengthType mLength;
 u SpeedType mSpeed;
+u TailVisibleType mTailVisible;
+
+== Rule (Drive-by tail visibility update)
+
+given @ isa QWorm {
+.   Bool tvis = false;
+.   if ($self.mType == BC.cTAIL) tvis = true;
+.   else if ($self.mType == BC.cTEMP) { /* tvis stays false */ }
+.   else {
+.     Atom & down = $self.myNgbAtom(true);
+.     if (down is QWorm) {
+.       QWorm & them = (QWorm &) down;
+.       tvis = them.mTailVisible;
+.     }
+.   }
+.   $self.mTailVisible = tvis;
+.   return false;
+. }
+
+ @ -> .
 
 == Rule (Head advance)
 
@@ -51,7 +72,9 @@ change @ isa QWorm {
 .
 .   BC.Type toMake;
 .   if ($self.mLength == $self.mLength.maxof) {
-.     if (random.oddsOf($self.mSpeed,2u*$self.mSpeed.maxof)) toMake = BC.cTEMP;
+.     Unsigned oddsMax = 2u*$self.mSpeed.maxof;
+.     if (!$self.mTailVisible) oddsMax *= 3u; // Slow down if can't see tail
+.     if (random.oddsOf($self.mSpeed,oddsMax)) toMake = BC.cTEMP;
 .     else return;
 .   } else {
 .     if ($self.mLength == $self.mLength.minof) toMake = BC.cTAIL;
