@@ -1,0 +1,200 @@
+= quark QWorm isa BC.  Simple data worm demo
+local constant Unsigned cLENGTH_BITS = 4u;
+local constant Unsigned cSPEED_BITS = 2u;
+local typedef Unsigned(cLENGTH_BITS) LengthType;
+local typedef Unsigned(cSPEED_BITS) SpeedType;
+
+== Methods
+u virtual Bool headCanBridge() ; 
+
+getColor {
+.  ColorUtils.ARGB base = super.getColor($selector);
+.  ColorUtils.ARGB flavor;
+.  if (mType == BC.cHEAD)          flavor = cu.color(0x007700u);
+.  else if (mType == BC.cBODY)     flavor = base;
+.  else if (mType == BC.cDNBR)     flavor = cu.color(0xeeee00u);
+.  else if (mType == BC.cUPBR)     flavor = cu.color(0x111111u);
+.  else if (mType == BC.cTEMP)     flavor = cu.color(0x000077u);
+.  else /* (mType == BC.cTAIL) */  flavor = cu.color(0x770000u);
+.  QC qc;  // Hmm. Need a QCell base class for EEEEVERYTHING
+.  return qc.modulate(base,flavor);
+. }
+
+== Data members
+u LengthType mLength;
+u SpeedType mSpeed;
+
+== Rule (Head advance)
+
+given e : true                       // Consider dead sites
+vote e isa Empty : ew.isLive($cursn) // But don't vote for them
+check e : true                       // Accept $e.$nvotes == 0
+
+given @ isa QWorm : $self.mType == BC.cHEAD && $self.mUpstream != $self.mUpstream.maxof
+check @ {
+.   QWorm & sw = (QWorm &) ew[0];
+.   // Drive-by speed initialization
+.   if (sw.mSpeed == 0u) sw.mSpeed = (SpeedType) random.between(1u,SpeedType.maxof);
+.
+.   // Can't do normal head advance unless there's somewhere to go
+.   return $e.$nvotes > 0u;
+. }
+
+change @ isa QWorm {
+.   // Nothing to do if boxed in
+.   if ($e.$nvotes == 0u) return;
+.
+.   BC.Type toMake;
+.   if ($self.mLength == $self.mLength.maxof) {
+.     if (random.oddsOf($self.mSpeed,2u*$self.mSpeed.maxof)) toMake = BC.cTEMP;
+.     else return;
+.   } else {
+.     if ($self.mLength == $self.mLength.minof) toMake = BC.cTAIL;
+.     else toMake = BC.cBODY;
+.     $self.mLength++;
+.   }
+.   Atom acopy = $self.atomof;    // Copy as atom to clone concrete type
+.   QWorm& copy = (QWorm&) acopy; // But we only care about QWorm view of it
+.   copy.mType = toMake;
+.   $self.advanceCopying(BC.Ortho)($e.$winsn - 1u), copy);
+. }
+
+   e      .
+  e@e -> .@.
+   e      .
+
+== Rule (Build bridge to advance head)
+
+given @ isa QWorm :
+.  $self.mType == BC.cHEAD &&
+.  $self.headCanBridge() &&
+.  $self.mUpstream != $self.mUpstream.maxof
+
+# Note we can't build a bridge if the head is directly upstream of an
+# existing bridge -- because we need at least one 'real' space for the
+# ramp -- but we can't (easily) check that in the given @, so we do it
+# in check @
+
+# OK so this is really gross.  We're using '\symmetries none' so that
+# mUpstream and mDownstream have the consistent obvious meanings, but
+# here we want to match a complex pattern -- an orthogonal empty 'd'
+# at distance two, with a different empty 'h' at distance one to the
+# 'd' -- in any of four rotations.
+#
+# We wish we could specify \symmetries on a per-ruleset basis but we
+# can't, so what we're doing is matching in two stages: As a drive-by,
+# first pick a d and store its SN in $0.  Then second, search for hs
+# at distance one to SN $0.
+#
+# This can miss opportunities because the d is picked without
+# considering if there's any hs around it, but it's still the 
+# least-worst I've come up with so far.  Ugh.
+
+scratch 0 = EventWindow.SiteNum.maxof       // Init to no d picked
+
+given d : true                       // Consider dead sites
+vote d isa Empty : ew.isLive($cursn) // But don't vote for them
+
+      d           .
+     ...         ...
+    d.@.d   ->  .....
+     ...         ...
+      d           .
+
+check @ {
+.   QWorm & me = (QWorm &) ew[0];
+.   Atom & down = me.getOrtho(me.mDownstream);
+.   if (!(down is QWorm)) return false; // ??
+.   QWorm & them = (QWorm &) down;
+.   return them.getBridgeType() == BC.cNONE;
+. }
+
+check d {
+.  if ($d.$nvotes > 0u) $0 = $d.$winsn;
+.  return false;
+. }
+
+given h : true          // Consider dead sites
+vote h isa Empty {      // Place for cHEAD
+.  if (!ew.isLive($cursn)) return 0u;
+.  if ($0 == EventWindow.SiteNum.maxof) return 0u;
+.  C2D dat = ew.getCoord((EventWindow.SiteNum) $0);
+.  C2D hat = ew.getCoord($cursn);
+.  if (dat.manhattanDistance(hat) == 1u) return 1u;
+.  return 0u;
+. }
+
+      h           .
+     h.h         ...
+    h...h       .....
+   h..@..h  -> ...@...
+    h...h       .....
+     h.h         ...
+      h           .
+
+change @ isa QWorm {
+.  EventWindow.SiteNum dsn = (EventWindow.SiteNum) $0;
+.  EventWindow.SiteNum hsn = $h.$winsn;
+.  DebugUtils du;
+.  du.print("FIXXXXX ME");
+.  du.printContext();
+.  du.print("XDH");
+.  du.print(dsn);
+.  du.print(hsn);
+.
+.  Atom headCopy = $self.atomof;
+.
+.  // Note we're using copies of cHEAD to init cUPBR and cDNBR.
+.  // Subclass data members may be left over in the result -- but since
+.  // subclasses shouldn't mess with bridges, they 'shouldn't' see that
+.
+.  //// Set up the UPBR in head's old site
+.  ew[0] = headCopy;
+.  QWorm & upbr = (QWorm &) ew[0];
+.  upbr.mType = BC.cUPBR;
+.  //upbr.mDownstream unchanged and therefore == headCopy.mDownstream;
+.
+.  // dsn is 9..12, SN of cDNBR
+.  BC.Ortho toDN = (BC.Ortho) (dsn - 9u);
+.  upbr.mUpstream = toDN;
+.
+.  //// Set up the DNBR in the chosen dsn
+.  ew[dsn] = headCopy;
+.  QWorm & dnbr = (QWorm &) ew[dsn];
+.  dnbr.mType = BC.cDNBR;
+.  dnbr.mDownstream = (BC.Ortho) (BC.Ortho.maxof - toDN);
+.
+.  // Now we need to convert dsn->hsn to an ortho
+.  C2D diff = ew.getCoord(hsn)-ew.getCoord(dsn);
+.  EventWindow.SiteNum deltasn = ew.getSiteNumber(diff);
+.  BC.Ortho tohsn = (BC.Ortho) (deltasn - 1u);
+.  dnbr.mUpstream = tohsn;
+.
+.  //// Set up the head in the chosen hsn
+.  ew[hsn] = headCopy;
+.  QWorm & head = (QWorm &) ew[hsn];
+.  head.mDownstream = (BC.Ortho) (BC.Ortho.maxof - tohsn);
+. }
+
+== Rule (Drive-by suicide)
+
+given @ isa QWorm {
+.   // Drive-by suicide check
+.   if ($self.mType == BC.cHEAD && random.oddsOf(1,1000)) {   // 0.1% blowup if the head is boxed in
+.     $self.mUpstream = $self.mUpstream.maxof;
+.   }
+.   return false;
+. }
+
+  @ -> .
+
+== Rule (Zero-length special death)
+
+given @ isa QWorm : $self.mType == BC.cHEAD && $self.mLength == 0u && $self.mUpstream == $self.mUpstream.maxof
+
+  @ -> _   # Blow up 'manually' since BC doesn't understand length==0
+
+
+== Postrule (Hodl)
+
+   @ -> @

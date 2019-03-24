@@ -1,0 +1,8 @@
+= element SWorm isa QWorm.  Simple (non-bridging) worm demo
+\symbol SW
+\color #8b8
+\radius 3
+\symmetries none
+
+== Methods
+u virtual Bool headCanBridge() { return false; }

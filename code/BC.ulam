@@ -1,0 +1,264 @@
+/** Second-generation 'Base Chain' class for 1D data structure
+ * organization.  To be subclassed by SPLAT code.  
+ *
+ * 2nd gen wowzer feature: On-demand bridging allows crossing chains.
+ */
+quark BC : QC {
+  typedef Unsigned(2) Ortho; // SN - 1
+  typedef Unsigned(3) Type;
+  constant Type cHEAD = 0u;
+  constant Type cBODY = 1u;
+  constant Type cTEMP = 2u;
+  constant Type cDNBR = 3u; // Note cDNBR + cUPBR == Type.maxof
+  constant Type cUPBR = 4u; 
+  constant Type cCUST = 5u; // Reserved for subclasses
+  constant Type cTAIL = 6u;
+  constant Type cNONE = 7u;
+
+  constant Bool dp = false; // Debug printing
+
+  EventWindow ew;
+  DebugUtils du;
+  Fail f;
+  Type mType;
+  Ortho mUpstream;
+  Ortho mDownstream;
+
+  // Our 'rule' is to do 'BC semantics' on $self.
+  virtual Bool evaluateRuleSets() { return update(); }
+
+  // Returned SN not gteed to contain a BC
+  EventWindow.SiteNum getNgbSN(Bool wantDownstream) {
+    EventWindow.SiteNum sn = (wantDownstream ? mDownstream : mUpstream) + 1u;
+    if ((wantDownstream  && mType == cDNBR) ||
+        (!wantDownstream && mType == cUPBR)) sn += 8u; // pop out one orbital
+    return sn;
+  }
+
+  Type getBridgeType() {
+    if (mType == cDNBR || mType == cUPBR) return mType;
+    return cNONE;
+  }
+
+  // EventWindow.SiteNum getDownstreamSN() { return getNgbSN(true); }
+  // EventWindow.SiteNum getUpstreamSN() { return getNgbSN(false); }
+
+  Type ngbPointsAtMe(Bool wantDownstream) {
+    if (dp) du.print("ngbPointsAtMe");
+    if (dp) du.print(wantDownstream);
+    EventWindow.SiteNum tsn = getNgbSN(wantDownstream);
+    Atom & atom = ew[tsn];
+    if (dp) du.print(tsn);
+    if (dp) du.print(atom);
+    if (!(atom is Self)) return cNONE;
+    Self & them = (Self&) atom;
+    EventWindow.SiteNum usn = them.getNgbSN(!wantDownstream);
+    Type myBridge = getBridgeType();
+    Bool imABridge = // Am I a bridge _in_the_requested_direction_ ?
+      (myBridge == cDNBR && wantDownstream) ||
+      (myBridge == cUPBR && !wantDownstream);
+    if (dp) du.print(imABridge);
+    Unsigned sitesum = usn + tsn;
+    if (dp) du.print(sitesum);
+    if (imABridge && sitesum == 21u) return them.mType;
+    if (!imABridge && sitesum == 5u) return them.mType;
+    if (dp) du.print("NO");
+    return cNONE;
+  }
+  
+  Type downstreamPointsAtMe() { return ngbPointsAtMe(true); }
+  Type upstreamPointsAtMe() { return ngbPointsAtMe(false); }
+  
+  // Returns type of the ortho pointing at me or cNONE
+  // Type orthoPointsAtMe(Ortho od, Bool imUpstream) {
+  //   Atom & atom = ew[od + 1u];
+  //   if (!(atom is Self)) return cNONE;
+  //   Self & dw = (Self&) atom;
+  //   if (imUpstream  && od == Ortho.maxof - dw.mUpstream) return dw.mType;
+  //   if (!imUpstream && od == Ortho.maxof - dw.mDownstream) return dw.mType;
+  //   return cNONE;
+  // }
+
+  Atom & getOrtho(Ortho od) {
+    return ew[od + 1u];
+  }
+
+  // return my new location
+  EventWindow.SiteNum swapMeWith(Bool wantDownstream) {
+    EventWindow.SiteNum sn = getNgbSN(wantDownstream);
+    swapBCs(0u, sn);
+    return sn;
+  }
+
+  Void swapBCs(EventWindow.SiteNum a, EventWindow.SiteNum b) {
+    if (a == b) f.fail();
+    if (!(ew[b] is Self)) f.fail();
+
+    Atom atom = ew[a];           // Copy of a
+    if (!(atom is Self)) f.fail();
+    Self & tmp = (Self &) atom;  // Ref to copy
+
+    ew.swap(a,b);
+
+    Self & nowThem = (Self&) ew[a];
+    Self & nowUs = (Self&) ew[b];
+
+    nowUs.mUpstream = nowThem.mUpstream;
+    nowUs.mDownstream = nowThem.mDownstream;
+    nowThem.mUpstream = tmp.mUpstream;
+    nowThem.mDownstream = tmp.mDownstream;
+  }
+
+  Bool blowup() {
+    if (mType != cHEAD) return false;  // Worm dies from the head
+    if (mUpstream != mUpstream.maxof) return false; // Head not in blowup mode
+    EventWindow.SiteNum sn = mDownstream + 1u;
+    Atom & atom = ew[sn];
+    if (atom is Self) {
+      Self & qw = (Self&) atom;
+      if (qw.mType == cTAIL) {
+        ew[sn] = Empty.instanceof;  // Tail dies with the head
+      } else {
+        qw.mType = cHEAD;        // You're the head now
+        qw.mUpstream = qw.mUpstream.maxof;  // And you're set to blow
+      }
+    }
+    ew[0] = Empty.instanceof;
+    return true;
+  }
+
+  Void advanceCopying(Ortho od, Self& copythis) {
+
+    if (mType != cHEAD) f.fail();  // Only the head can advance
+    Atom atom = copythis.atomof;   // Copy our concrete instantiation
+    Self& s = (Self&) atom;
+
+    s.mDownstream = mDownstream;  // Our old downstream will be theirs now
+    s.mUpstream = od;             // Their upstream is our destination
+
+    mDownstream = (Ortho) (Ortho.maxof - od);  // Our downstream is the opposite of our destination
+    getOrtho(od) = self.atomof;   // We move
+    ew[0] = atom;                 // They take our place 
+  }
+
+  Bool iDie() {
+    ew[0] = Empty.instanceof;
+    return true;
+  }
+
+  typedef ByteStreamArray(250u) MsgBuf;
+  MsgBuf & reset(MsgBuf & mb) {
+    mb.reset();
+    return mb;
+  }
+
+  // super class default behavior
+  Bool update() {
+    MsgBuf buf;
+
+    if (blowup()) return true;         // Check for wormageddon
+
+    if (dp) du.print((ByteStream&) (reset(buf).printf("update(%d)",mType)));
+
+    // Fragile sanity: Everybody but Tail should have downstream pointing at them
+    if (mType != cTAIL && ngbPointsAtMe(true) == cNONE) return iDie();
+
+    // Fragile sanity: Everybody but Head should have upstream pointing at them
+    if (mType != cHEAD && ngbPointsAtMe(false) == cNONE) return iDie();
+
+    if (dp) du.print((ByteStream&) (reset(buf).printf("SANE(%d)",mType)));
+
+    if (mType == cHEAD) return false;  // Head does nothing by default
+
+    // Temp moves downstream until it hops the tail (or somehow falls off)
+    if (mType == cTEMP) {
+      Type down = ngbPointsAtMe(true);
+      if (dp) du.print((ByteStream&) (reset(buf).printf("cTEMP down(%d)",down)));
+
+      if (down == cNONE) ew[0] = Empty.instanceof; // Nobody downstream, die
+      else if (down == cDNBR) return false;        // We can't handle bridges (at least yet)
+      else {
+        EventWindow.SiteNum sn = swapMeWith(true); // else swap down
+        if (down == cTAIL) ew[sn] = Empty.instanceof;     // and die if it was tail
+      }
+      return true;
+    }
+
+    // Body and Tail move upstream through Temp
+    Bool isTail = mType == cTAIL; 
+    if (isTail || mType == cBODY) {
+      Type up = ngbPointsAtMe(false);
+      if (dp) du.print((ByteStream&) (reset(buf).printf("BodTail(%d) up(%d)",isTail,up)));
+      if (up == cNONE) return iDie();
+      if (up != cTEMP) return false;
+
+      EventWindow.SiteNum newsn = swapMeWith(false);
+
+      // If I'm the tail, the temp I hopped is done.
+      if (isTail) ew[0] = Empty.instanceof;
+      return true;
+    }
+
+    // Bridges swap down temp
+    Type btype = getBridgeType();
+    if (btype != cNONE) {
+      if (dp) du.print((ByteStream&) (reset(buf).printf("btype(%d)",mType)));
+      EventWindow.SiteNum ourrampsn = getNgbSN(btype == cUPBR);
+      Atom & atom = ew[ourrampsn];
+      if (dp) du.print((ByteStream&) (reset(buf).printf("ourrampsn=%d",ourrampsn)));
+      if (dp) du.print(atom);
+
+      if (!(atom is Self)) return iDie();
+      Self & ourramp = (Self&) atom;
+
+      EventWindow.SiteNum matesn = getNgbSN(btype == cDNBR);
+      Atom & matom = ew[matesn];
+      if (dp) du.print((ByteStream&) (reset(buf).printf("matesn(%d)",matesn)));
+      if (dp) du.print(matom);
+
+      if (!(matom is Self)) return iDie();
+      Self & mate = (Self&) matom;
+
+      EventWindow.SiteNum theirrampsn = mate.getNgbSN(btype == cDNBR);
+      C2D off = ew.getCoord(matesn) + ew.getCoord(theirrampsn);
+      EventWindow.SiteNum trampFromUsSN = ew.getSiteNumber(off);
+      if (dp) du.print((ByteStream&) (reset(buf).printf("theirrampsn(%d)fromus(%d)",theirrampsn,trampFromUsSN)));
+      Atom & tratom = ew[trampFromUsSN];
+      if (dp) du.print(tratom);
+
+      if (!(tratom is Self)) return iDie();
+      Self & theirramp = (Self&) tratom;
+
+      if (dp) du.print((ByteStream&) (reset(buf).printf("btype%d,our%d,their%d",btype,ourramp.mType,theirramp.mType)));
+      // Check for temp on the onramp of downbridge
+      if (btype == cDNBR && ourramp.mType != cTEMP) return false;
+      if (btype == cUPBR && theirramp.mType != cTEMP) return false;
+
+      // Check for tail on the onramp of upbridge
+      Bool tailup =
+        (btype == cUPBR && ourramp.mType == cTAIL) ||
+        (btype == cDNBR && theirramp.mType == cTAIL);
+          
+      // Make the big swap!
+      swapBCs(ourrampsn, trampFromUsSN);
+
+      // Tear down the bridge if the tail moved
+      if (tailup) {
+        // kill the temp we moved
+        if (btype == cUPBR) ew[ourrampsn] = Empty.instanceof;    
+        else ew[trampFromUsSN] = Empty.instanceof; 
+
+        // kill the bridge
+        ew[matesn] = Empty.instanceof; 
+        ew[0u] = Empty.instanceof;     
+      }
+
+      // Oh yeah we did work
+      return true;
+    }
+
+    // Not reached?
+    return false;
+  }
+  
+}

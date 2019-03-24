@@ -1,0 +1,14 @@
+= quark QC.  Flag base class for all to-be-recognized-as-cellular components.
+
+== Methods
+
+# Helper method
+u ColorUtils.ARGB modulate(ColorUtils.ARGB base, ColorUtils.ARGB flavor) {
+.  ColorUtils.ARGB ret;
+.  ret[0] = 0xff;
+.  for (Int i = 1; i < 4; ++i) {
+.    ret[i] = (ColorUtils.Channel) (base[i]+((Int) flavor[i]-0x80));
+.  }
+.  return ret;
+. }
+

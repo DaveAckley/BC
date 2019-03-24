@@ -1,0 +1,9 @@
+= element BWorm isa QWorm.  Bridging worm
+\symbol BW
+\color #88b
+\radius 3
+\symmetries none
+
+== Methods
+u virtual Bool headCanBridge() { return true; }
+
