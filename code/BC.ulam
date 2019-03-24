@@ -40,8 +40,11 @@ quark BC : QC {
     return cNONE;
   }
 
-  // EventWindow.SiteNum getDownstreamSN() { return getNgbSN(true); }
-  // EventWindow.SiteNum getUpstreamSN() { return getNgbSN(false); }
+  Atom & myNgbAtom(Bool wantDownstream) {
+    EventWindow.SiteNum tsn = getNgbSN(wantDownstream);
+    Atom & atom = ew[tsn];
+    return atom;
+  }
 
   Type ngbPointsAtMe(Bool wantDownstream) {
     if (dp) du.print("ngbPointsAtMe");
@@ -69,16 +72,6 @@ quark BC : QC {
   Type downstreamPointsAtMe() { return ngbPointsAtMe(true); }
   Type upstreamPointsAtMe() { return ngbPointsAtMe(false); }
   
-  // Returns type of the ortho pointing at me or cNONE
-  // Type orthoPointsAtMe(Ortho od, Bool imUpstream) {
-  //   Atom & atom = ew[od + 1u];
-  //   if (!(atom is Self)) return cNONE;
-  //   Self & dw = (Self&) atom;
-  //   if (imUpstream  && od == Ortho.maxof - dw.mUpstream) return dw.mType;
-  //   if (!imUpstream && od == Ortho.maxof - dw.mDownstream) return dw.mType;
-  //   return cNONE;
-  // }
-
   Atom & getOrtho(Ortho od) {
     return ew[od + 1u];
   }
@@ -184,9 +177,9 @@ quark BC : QC {
       return true;
     }
 
-    // Body and Tail move upstream through Temp
+    // Body, Tail, Cust move upstream through Temp
     Bool isTail = mType == cTAIL; 
-    if (isTail || mType == cBODY) {
+    if (isTail || mType == cBODY || mType == cCUST) {
       Type up = ngbPointsAtMe(false);
       if (dp) du.print((ByteStream&) (reset(buf).printf("BodTail(%d) up(%d)",isTail,up)));
       if (up == cNONE) return iDie();
