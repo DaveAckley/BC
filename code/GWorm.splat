@@ -1,0 +1,53 @@
+= element GWorm isa QWorm.  Guided worm
+\symbol GW
+\color #b88
+\radius 3
+\symmetries none
+
+== Methods
+u @Override virtual Bool headCanBridge() { return true; }
+u @Override virtual Unsigned(16) votesForEmpty(Unsigned sn) {
+.  EventWindow ew;
+.  C2D at = ew.getCoord((EventWindow.SiteNum) sn);
+.  C2D want = ew.getCoord((EventWindow.SiteNum) (mCommandDir + 1u));
+.  Int vec = at.dot(want);
+.  DebugUtils du;
+.  du.print("GWORM sn cdir+ vec");
+.  du.print(sn);
+.  du.print(mCommandDir+1u);
+.  du.print(vec);
+.  return (Unsigned(16)) (1u << (Unsigned) ((vec+1)*3));
+. }
+
+getColor {
+.  ColorUtils.ARGB base = super.getColor($selector);
+.  if (mType != BC.cHEAD) return base;
+.  ColorUtils.ARGB flavor;
+.  if (mCommandDir == 0u)          flavor = cu.color(0xffffffu); // West
+.  else if (mCommandDir == 1u)     flavor = cu.color(0x00ff00u); // North
+.  else if (mCommandDir == 2u)     flavor = cu.color(0xffff00u); // South
+.  else /*if (mCommandDir == 3u)*/ flavor = cu.color(0xff0000u); // East
+.  QC qc;  // Hmm. Need a QCell base class for EEEEVERYTHING
+.  return qc.modulate(base,flavor);
+. }
+
+
+== Data members
+u BC.Ortho mCommandDir = 3u; // Default to east
+
+== Prerules (drive-by command pick)
+vote g isa Guide
+
+check @ {
+.  if ($g.$nvotes > 0u) {
+.    GWorm & gw = (GWorm&) ew[0];
+.    Guide & gd = (Guide&) ew[$g.$winsn];
+.    gw.mCommandDir = gd.commandDirection();
+.  }
+.  return false; // drive-by
+. }
+
+   g        .
+  g@g  ->  ...
+   g        .
+

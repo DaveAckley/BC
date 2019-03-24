@@ -1,0 +1,35 @@
+= quark Guide
+
+== Methods
+u virtual BC.Ortho commandDirection() ;
+
+== Rules
+ @ -> .
+
+= element WGuide isa Guide
+\color #fff
+\radius 0
+\symmetries none
+== Methods
+u @Override virtual BC.Ortho commandDirection() { return 0u; }
+
+= element NGuide isa Guide
+\color #0f0
+\radius 0
+\symmetries none
+== Methods
+u @Override virtual BC.Ortho commandDirection() { return 1u; }
+
+= element SGuide isa Guide
+\color #ff0
+\radius 0
+\symmetries none
+== Methods
+u @Override virtual BC.Ortho commandDirection() { return 2u; }
+
+= element EGuide isa Guide
+\color #f00
+\radius 0
+\symmetries none
+== Methods
+u @Override virtual BC.Ortho commandDirection() { return 3u; }
