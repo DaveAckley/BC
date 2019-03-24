@@ -6,6 +6,7 @@ local typedef Unsigned(cSPEED_BITS) SpeedType;
 
 == Methods
 u virtual Bool headCanBridge() ; 
+u virtual Unsigned(16) votesForEmpty(Unsigned sn) { return 1u; } 
 
 getColor {
 .  ColorUtils.ARGB base = super.getColor($selector);
@@ -27,7 +28,11 @@ u SpeedType mSpeed;
 == Rule (Head advance)
 
 given e : true                       // Consider dead sites
-vote e isa Empty : ew.isLive($cursn) // But don't vote for them
+vote e isa Empty {
+.   if (!ew.isLive($cursn)) return 0u; // But don't vote for them
+.   QWorm & qw = (QWorm&) ew[0];     // Get head and
+.   return qw.votesForEmpty($cursn); // Seek guidance from it
+. }
 check e : true                       // Accept $e.$nvotes == 0
 
 given @ isa QWorm : $self.mType == BC.cHEAD && $self.mUpstream != $self.mUpstream.maxof
