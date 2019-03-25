@@ -11,11 +11,11 @@ u @Override virtual Unsigned(16) votesForEmpty(Unsigned sn) {
 .  C2D at = ew.getCoord((EventWindow.SiteNum) sn);
 .  C2D want = ew.getCoord((EventWindow.SiteNum) (mCommandDir + 1u));
 .  Int vec = at.dot(want);
-.  DebugUtils du;
-.  du.print("GWORM sn cdir+ vec");
-.  du.print(sn);
-.  du.print(mCommandDir+1u);
-.  du.print(vec);
+.  //DebugUtils du;
+.  //du.print("GWORM sn cdir+ vec");
+.  //du.print(sn);
+.  //du.print(mCommandDir+1u);
+.  //du.print(vec);
 .  return (Unsigned(16)) (1u << (Unsigned) ((vec+1)*3));
 . }
 

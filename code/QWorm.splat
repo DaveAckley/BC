@@ -163,12 +163,12 @@ vote h isa Empty {      // Place for cHEAD
 change @ isa QWorm {
 .  EventWindow.SiteNum dsn = (EventWindow.SiteNum) $0;
 .  EventWindow.SiteNum hsn = $h.$winsn;
-.  DebugUtils du;
-.  du.print("FIXXXXX ME");
-.  du.printContext();
-.  du.print("XDH");
-.  du.print(dsn);
-.  du.print(hsn);
+.  //DebugUtils du;
+.  //du.print("FIXXXXX ME");
+.  //du.printContext();
+.  //du.print("XDH");
+.  //du.print(dsn);
+.  //du.print(hsn);
 .
 .  Atom headCopy = $self.atomof;
 .
