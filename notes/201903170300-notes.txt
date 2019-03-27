@@ -1,4 +1,4 @@
-{5}  -*- text -*- 
+{22}  -*- text -*-
 [0:
 
 Sun Mar 17 03:00:08 2019 OK just spent, of course, waaaay too much
@@ -30,7 +30,7 @@ could delegate handling some type Foo to one of its own data members
 a 'hasa' into a 'pseudo-isa'. [3:
 
 Sun Mar 17 03:18:22 2019 Not sure.  We'll see, someday, perhaps.  For
-sure there would be lots of unobvious implementation issues.  
+sure there would be lots of unobvious implementation issues.
 
 Anyway so I spent time on that.  But for now we're just going to do BC
 in ulam 4 and that's that.  Want to just get into the design space and
@@ -51,3 +51,322 @@ I admit.  One, Two, Three, Publically.. Makes sense to me.  'Then
 Public Be'.
 
 :4]
+[5:
+
+Sun Mar 17 04:15:45 2019 OK, so migrated code from C213, and renamed
+QWorm.ulam to BC.ulam.  Expanded the type to three bits.  But
+wondering if some virtualization would be better than a type code
+anyway.  What might be the basic spatial-sensitive interface?
+
+Operations:
+
+ - Sanity-checking.
+   = SN getDown()  get sitenumber of downstream BC or SN.maxof if none
+   = SN getUp()    get sitename of upstream BC or SN.maxof if none
+
+   SN down = getDown();
+   if (down != SN.maxof) {
+     if (!(ew[down] is BC)) return iDie(); // my down is not BC
+     BC& d = (BC&) ew[down];
+     SN dsup = d.getUp();
+     if (dsup == SN.maxof) return iDie();  // my down has no up
+     SN check = mapSN(dsup, down);         // where is down's dsup relative to us?
+     if (check != 0u) return iDie();       // it's not pointing at us
+   }
+
+..And stuff like that.  Could we have the bridge guys actually kind of
+splice themselves out of these computations?  So if you asked where
+your downstream was you might get an answer that's four sites away,
+because there's a three-site bridge behind you?  It would be cooler to
+have the bridges be mostly transparent with respect to basic chain
+operations.  As long as you are just following the path, and not
+trying to shortcut it, it 'Ought To Just Work'.
+
+SN BC.getNext() ; // return the site downstream of me or SN.maxof if none
+SN BC.getPrev() ; // return the site upstream of me or SN.maxof if none
+Bool BC.isHead() ; // return true iff I should not have an upstream
+Bool BC.isTail() ; // return true iff I should not have a downstream
+
+but how would we indirect through the abutments, if they are not 'in'
+the chain?
+
+       T
+       B v
+   HBBUBDBBT     'A westgoing chain bridging a southbound one'
+     ^ B
+       H
+
+
+self might be B marked with '^', for example.  If we call getNext() on
+that, it has to look at the 'U', right?  At the very least, there'd
+have to be some kind of explicit indirection code that 'B' knew about
+-- so the abutments wouldn't be all that transparent.
+
+We might be able to make some special kind of OM to do bridging over
+the IM?  Or IM is an upstream bridge for outbound, and OM is an
+upstream bridge for inbound?  And we grow 'standard' temporary
+abutments to mate with them?  We'll see.
+
+[6:
+
+Sun Mar 17 05:08:12 2019 So if we were willing to make special code
+for forwarding pointers, how would it work?
+
+The sanity checking code might not be the place to start for
+understanding it, since that would need to punch under stuff that we
+would normally ride over.  Like getCoord vs getCoordRaw -- with the
+bridging being like the application of a symmetry.
+
+Then
+
+SN getDown(), for a 'normal' BC, would start by reading its own
+mDownstream and sanity checking that.  It would then dereference that
+and ..
+
+If we're going to be making calls on other BCs as we go, I think we
+need to be telling them where they are in the event window, because
+they won't be able to  assume they're at 0u.
+
+So we're going to need that 'mapSN' I mentioned up there quite
+regularly.  Because we always need to go back to the ew to dereference
+a SN.  Would it be worth considering some kind of ew offset, on top of
+the symmetry?  So caller would somehow set the offset before making a
+call on a You&, so you could still think you're at SN 0?  Push/pop
+offsets or something?
+
+Or could ew be able to map like Atom&s back to SNs?  It's just an
+effen Atom[] down at the bottom.  Why can't we totally have
+ SN EventWindow.getSN(Atom&)
+
+returning SN.maxof if Atom& is not in the ew, and returning its SN
+otherwise?  It's kind of magic in that it relies on C++ level pointer
+crap, which could tie the hands of ew implementors, at least a bit.
+Or maybe kind of a lot actually..  Right now, with all access to ew
+going by SNs, the ew could be an FPGA or whatever..  But not really or
+not totally, because obviously ew[sn] is already returning an Atom&,
+so the 'FPGA' or whatever it is has to able to generate Atom&s that
+can be dereferenced on demand.  And if we say that ew.getSN(Atom& ar)
+only has to return good info if ar was obtained from ew originally
+(via ew[sn] or whatever), then 'FPGA' can still deal with it.
+
+Tempting...  Let's see what an implementation might look like..[7:
+
+Sun Mar 17 06:03:33 2019 (Is there some way to tell whether .atomof
+will fail without actually failing?  I can't remember what it is, if
+so..  [8: Sun Mar 17 06:04:56 2019 Or did we say .atomof always works,
+somehow?  Even for a quark&?  How could that be? :8]) 
+
+:7]
+
+:6]
+
+:5]
+[9:
+
+Sun Mar 17 06:25:32 2019 So something like 'Atom& ar = qr.atomof;'
+will indeed FAIL if qr is pointing at a 'bare quark'.  So, could/do we
+have like a 'Bool hasAtomof(UrSelf&)' in AtomUtils, so we could check
+if we need to?[10:
+
+Sun Mar 17 07:03:19 2019 OK now we have this
+
+    --- a/share/ulam/stdlib/AtomUtils.ulam
+    +++ b/share/ulam/stdlib/AtomUtils.ulam
+    @@ -13,6 +13,13 @@ quark AtomUtils {
+        */
+       Int getType(Atom a) native;
+
+    +  /** Determine if '.atomof' could be performed on the given ref without failing.
+    +
+    +      \returns true iff ref refers to something that has a storage
+    +      atom associated with it, false otherwise.
+    +  */
+    +  Bool hasAtomof(UrSelf& ref) native;
+    +
+       Type getValidType(Atom a)
+       {
+         Fail f;
+
+plus this
+
+    --- a/share/tcc/stdlib/Uq_1010919AtomUtils10_native.tcc
+    +++ b/share/tcc/stdlib/Uq_1010919AtomUtils10_native.tcc
+    @@ -4,6 +4,16 @@
+
+     namespace MFM {
+
+    +  //! AtomUtils.ulam:21:   Bool hasAtomof(UrSelf& ref) native;
+    +  template<class EC>
+    +  Ui_Ut_10111b<EC> Uq_1010919AtomUtils10<EC>::Uf_919hasAtomof(const UlamContext<EC>& uc, UlamRef<EC>& ur, Ui_Uq_r10106UrSelf10<EC>& Ur_3ref) const
+    +  {
+    +    const u32 hasRealType = (Ur_3ref.GetType() != T::ATOM_UNDEFINED_TYPE);
+    +    Ui_Ut_10111b<EC> ubool(hasRealType);
+    +    return ubool;
+    +  } // Uf_919hasAtomof
+    +
+    +
+
+sitting in our work repo..  Seems to work fine.[11:
+
+Sun Mar 17 07:38:28 2019 So where are we here?  Diverted by an ulam
+ish there for a bit, lost the thread..[12:
+
+Sun Mar 17 07:40:25 2019 Ah, wondering if we could ask ew to tell us
+the SN of an Atom&, if there is one.  Well since I just made a new
+AtomUtils native method, I do feel more empowered to tear into stdlib
+stuff..
+
+Something like: 
+
+  /**
+     Access the SiteNum of the Atom referred to by ar, if that atom is
+     actually stored in an accessible location within the
+     EventWindow, or else returns SiteNum.maxof.  The sn returned is
+     relative to the prevailing symmetry, so the following code always
+     returns its argument:
+
+       Atom& func(Atom & ar) {
+         EventWindow.SiteNum sn = ew.getSN(ar);
+         if (sn == EventWindow.SiteNum.maxof) return ar;
+         return ew[sn];
+       }
+
+     Note that SiteNum.maxof may be returned for two possible reasons:
+
+     (1) The Atom may have nothing to do with the EventWindow, as in:
+
+         Atom a;           // In local storage
+         Atom & ar = (Atom &) a;
+         EventWindow.SiteNum sn = ew.getSN(ar); // sn gets SiteNum.maxof
+
+     (2) The underlying atom storage may actually be in the
+         EventWindow but the atom may not be accessible due to limited
+         event radius.  In other words, ew.getSN(ar) will never return
+         a SiteNum sn unless ew.isAccessible(sn) is true.
+
+     \return The SiteNum where the atom referred to by ar can be
+     found, or SiteNum.maxof if ar does not refer to an accessible Atom
+     in the EventWindow.
+   */
+  SiteNum EventWindow.getSN(Atom& ar) native;
+
+[13:
+
+Sun Mar 17 07:53:11 2019 Might probably need/want a getSNRaw as well?
+
+Tired now.
+
+:13]
+:12]
+
+:11]
+
+
+:10]
+
+
+:9]
+[14:
+
+Sun Mar 17 14:03:21 2019 Now, even if we did make ew.getSN(Atom&),
+there would still be plenty of issues, like ummmm the fact that self
+might not be at ew[0].  self would be at
+
+   ew[ew.getSN(self.atomof)]
+
+unless it wasn't in the ew at all.  Now, we already can't assume self
+is at ew[0], strictly speaking, but I feel like a lot of code does ---
+especially SPLAT code, I guess.  ...but if we have to know whether
+we're in a context where we can rely on ew[0], is it really that much
+worse to use ew.getSN(self.atomof) instead?  Actually, it'd be pretty
+cheap to have ew.getSN(UrSelf&) also, and that would do the
+au.hasAtomof check for us, since we have the OoB maxof return
+available there anyway.
+
+:14]
+[15:
+
+Fri Mar 22 17:39:04 2019 So come on let's do something concrete and
+fun here instead of just pissen around with wishen for stuff the
+language doesn't support.
+
+I want a worm that can bridge single occupied sites.  We've started
+that in BC.ulam by having three bits of type.  So what's the problem?
+Why can't we just implement?[16:
+
+Fri Mar 22 17:44:06 2019 So, the bridges are two apart, so they have
+to interpret their Ortho mUpstream and mDownstream differently. cDNBR
+doubles its mDownstream offset, cUPBR doubles its mUpstream offset --
+but their other directions remain normal.
+
+In this just-do-it implementation, the bridge abutments will not be
+'transparent' -- the guy upstream of an abutment will see the abutment
+when it looks downstream, and we'll just have to deal with that.
+
+:16]
+
+:15]
+[17:
+
+Sun Mar 24 06:24:44 2019 OK so lots done without much notes:
+
+DONE
+
+ - quark QWorm.splat does single-span bridging successfully and while
+   it's no magic bullet it's pretty damn cool
+
+ - element SWorm and element BWorm do random walks, without and with
+   bridging, respectively.
+
+ - element GWorm does externally-guided directed walks, a la
+   asymmetric diffusion of bonded structures.
+
+:17][18:
+
+Sun Mar 24 14:50:50 2019 What about having a single bit 'tail visible'
+signal as well?  Right now we're getting kind of extreme 'stringing'
+of worms when the head is hidden but the tail is in an intertile
+zone -- I've seen cases where a single worm is on three tiles at once,
+with giant blue segments in it.  Not only does that keep the segments
+from interacting with each, because they're so far apart, but it also
+takes up a ton of real-estate for a single little worm.
+
+So the idea could be that the head should be discouraged from
+advancing when the 'tail visible' signal is not lit.  And the tail
+visible signal propagates upstream on every event; the tail says '1',
+temps say '0', and everybody else says whatever their downstream
+connection says..  And we could say it just no tail visible just
+attenuates the head-temp-emitting rate, rather than shutting it down
+completely, so the 'speed' parameter could still mean something.[19:
+
+Sun Mar 24 16:33:46 2019 OK, did TailVisible.  Things can still get
+pretty stretched, but overall the gworms are distinctly more compact.
+I don't think I've seen any more 'three-tile worms', for example.
+
+:19]
+
+:18]
+[20:
+
+Sun Mar 24 16:37:28 2019 We were trying to think of some cooler name
+family than 'worm' for all this stuff.  Came up with 'L1nks' or
+'L1nx', with the '1' emphasizing the 1D-nature of this enterprise.
+Links play into the BC/Base Chain framework, so that's okay.  But
+writing it down now, it seems a bit too product-y or tradename-y for
+this purpose.  We have BC, a name with history, for the doubly-linked
+spatial list, with cTEMP propagation.
+
+Then right now, under that we have QWorm, which adds a 'brainstem' to
+the head, supporting length, speed, tail visibility, random wandering,
+and bridge construction.
+
+Finally, under that we have SWorm, BWorm, and GWorm, which add a
+'cortex' to the head, supporting bridge-making-decisions and
+navigation.
+[21:
+
+Wed Mar 27 09:03:46 2019 Michael Wilding suggests centipede/wormipede
+and I do like the idea of names in the X-ipede family.  We'll see.
+
+:21]
+:20]
